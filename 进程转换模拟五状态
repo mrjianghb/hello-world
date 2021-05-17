@@ -1,0 +1,256 @@
+//解决scanf返回值被忽略报错的问题，任选一个即可
+//#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4996)
+
+#include <stdio.h>
+#include<stdlib.h>
+#define error 0
+#define ok 1
+
+//全局变量
+int timeSlice = 3;//自定义时间片的长度
+int number = 0;//进程的数目
+
+typedef int QElemType;
+typedef int Status;
+
+//节点的PCB信息
+typedef struct PCB {
+	QElemType Pid;//进程的ID
+	QElemType Priority;//进程的优先级
+	QElemType Name;//进程的名称
+	QElemType State;//进程的状态 1为新建态 2为就绪态 3为运行态 4为阻塞态 5为退出态
+	QElemType Time;//进程需要运行的时间
+	//int resoure[1];//两种独占的资源
+};
+
+//链队列节点
+typedef struct QNode {
+	struct PCB pcb;//节点所具有的信息
+	struct QNode* next;//指向下一个节点的指针
+}QNode, * Queueptr;
+
+//链队列结构
+typedef struct {
+	Queueptr front;//队列的头指针
+	Queueptr rear;//队列的尾指针
+}LinkQueue;
+
+LinkQueue newbuiltQ;//新建态进程队列
+LinkQueue readyQ;//就绪态进程队列
+LinkQueue runQ;//运行(执行)态进程队列
+LinkQueue clogQ;//阻塞态进程队列
+
+//初始化队列
+Status InitQueue(LinkQueue* Q)
+{
+	Q->front = Q->rear = (Queueptr)malloc(sizeof(QNode));
+	if (!Q->front) return error; //申请空间失败
+	Q->front->next = NULL;//队头指向空
+	return ok;
+}
+
+//创建一个新进程(建立新建态队列的方法)，在队尾插入元素
+Status EnQueueCreateThread(LinkQueue* Q)
+{
+	Queueptr s = (Queueptr)malloc(sizeof(QNode));//给新节点分配空间
+	if (!s)//分配失败
+		exit(0);
+	/*将PCB内的值赋值给新节点*/
+	printf("请输入进程的ID号\n");
+	scanf("%d", &s->pcb.Pid);
+	printf("请输出进程的优先级\n");
+	scanf("%d", &s->pcb.Priority);
+	printf("请输入进程的名称\n");
+	scanf("%d", &s->pcb.Name);
+	s->pcb.State = 1;//设置新建的进程为新建态
+	printf("请输入进程需要运行的时间\n");
+	scanf("%d", &s->pcb.Time);
+
+	s->next = NULL;//新节点指向NULL
+	Q->rear->next = s;//队尾指针的下一个元素指向新节点
+	Q->rear = s;//队尾指针指向新节点
+
+	return ok;
+}
+
+Status EnQueue(LinkQueue* Q,QElemType e,QElemType e1, QElemType e2, QElemType e3)//创建就绪态队列在队尾插入元素
+{
+	
+		Queueptr s = (Queueptr)malloc(sizeof(QNode));//给新节点分配空间
+		if (!s)//分配失败
+			exit(0);
+		s->pcb.Pid = e;
+		s->pcb.Priority = e1;
+		s->pcb.Name = e2;
+		s->pcb.Time = e3;
+		s->pcb.State = 2;
+
+		s->next = NULL;//新节点指向NULL
+		Q->rear->next = s;//队尾指针的下一个元素指向新节点
+		Q->rear = s;//队尾指针指向新节点（新节点成为队尾指针指向的节点）
+		printf("就绪态: %d %d %d %d \n", s->pcb.Pid, s->pcb.Priority, s->pcb.Name, s->pcb.Time);
+
+			//取就绪态头结点给运行态,并且将就绪态队列清空(用的是清空链队列的方法)
+			Queueptr p, q;//p用来遍历队列的节点，q用来指向被删除的节点
+
+			Q->rear = Q->front;//队尾指针指向队头指针
+			p = Q->front->next;//p指向队头指针的下一个节点
+			Q->front->next = NULL;//队头指针的下一个节点指向NULL(表示删除之后的所有元素)
+
+			//当队列中还有元素，释放头结点之后的所有节点
+			while (p) {
+				//将p指向的节点信息以此送入运行态队列
+				GetHeadAndCreateRunThread(&runQ, p->pcb.Pid, p->pcb.Priority, p->pcb.Name, p->pcb.Time);
+				
+				q = p;//q节点指向被删除节点
+				p = p->next;//p指向队列的下一个节点
+				free(q);//释放节点q
+		}
+
+}
+
+//遍历newbuild(新建态)的队列，将新建态队列中每一个节点的信息复制到就绪队列中
+Status QueueTravel(LinkQueue* Q)
+{	
+	Queueptr p;//用于遍历队列中的节点
+	p = Q->front->next; //p指向新建态队列的头结点
+	
+	while (p) { 
+		//printf("新建态：%d %d %d %d \n", p->pcb.Pid, p->pcb.Priority, p->pcb.Name, p->pcb.Time);
+		//将新建态队列的PCB内的信息复制到就绪队列相应的节点上
+		EnQueue(&readyQ, p->pcb.Pid, p->pcb.Priority, p->pcb.Name, p->pcb.Time);
+		p = p->next;//p移动到队列的下一个位置
+	}
+
+	//当新建态队列的PCB内的信息复制到就绪队列相应的节点上完成之后将新建态队列清空
+	Queueptr n, m;//n用来遍历队列的节点，m用于指向被删除的节点
+	Q->rear = Q->front;//队尾指针指向队头指针
+	n = Q->front->next;//n指向队头指针的下一个节点
+	Q->front->next = NULL;//队头指针的下一个节点指向NULL(表示删除之后的所有元素)
+
+	//当队列中还有元素，释放头结点之后的所有结点
+	while (n) {
+		m = n;//m结点指向被删除节点
+		n = n->next;//n指向队列的下一个节点
+		free(m);//释放m节点
+	}
+	if(Q->front == Q->rear)
+	{
+		printf("新建态队列清空完毕\n");
+	}
+}
+
+//取就绪队列的头结点进入运行态的队列
+Status GetHeadAndCreateRunThread(LinkQueue* Q, QElemType e, QElemType e1, QElemType e2, QElemType e3)
+{
+	Queueptr s = (Queueptr)malloc(sizeof(QNode));//给新节点分配空间
+	if (!s)//分配失败
+		exit(0);
+	s->pcb.Pid = e;
+	s->pcb.Priority = e1;
+	s->pcb.Name = e2;
+	s->pcb.Time = e3;
+	s->pcb.State = 3;//设置进程的状态为运行态
+
+	if (s->pcb.Time <= timeSlice)
+	{
+		printf("进程%d执行完毕，其所需的运行时间为%d\n", s->pcb.Name, s->pcb.Time);
+	}
+	else//进入阻塞队列
+	{
+		//由运行态创建阻塞态队列
+		printf("因为时间片(timeSlice = 3)运行完毕所以进程:%d进入阻塞队列\n",s->pcb.Name);
+		
+		ClogThread(&clogQ, s->pcb.Pid, s->pcb.Priority, s->pcb.Name, ((s->pcb.Time) - timeSlice));
+	}
+}
+
+//创建阻塞态队列
+Status ClogThread(LinkQueue* Q, QElemType e, QElemType e1, QElemType e2, QElemType e3)
+{
+	Queueptr s = (Queueptr)malloc(sizeof(QNode));//给新节点分配空间
+	if (!s)//分配失败
+		exit(0);
+	s->pcb.Pid = e;
+	s->pcb.Priority = e1;
+	s->pcb.Name = e2;
+	s->pcb.Time = e3;
+	s->pcb.State = 4;//设置进程状态为阻塞态
+
+	s->next = NULL;//新节点指向NULL
+	Q->rear->next = s;//队尾指针的下一个元素指向新节点
+	Q->rear = s;//队尾指针指向新节点（新节点成为队尾指针指向的节点）
+
+	printf("%d %d %d %d \n", s->pcb.Pid, s->pcb.Priority, s->pcb.Name, s->pcb.Time);
+}
+
+//遍历阻塞态队列，将
+Status QueueTravel1(LinkQueue* Q)//遍历clogQ(阻塞态)的队列
+{
+	Queueptr p;//用于遍历队列中的节点
+	p = Q->front->next; //p指向新建态队列的头结点
+
+	while (p) {
+		//printf("新建态：%d %d %d %d \n", p->pcb.Pid, p->pcb.Priority, p->pcb.Name, p->pcb.Time);
+		//将新建态队列的PCB内的信息复制到就绪队列相应的节点上
+		EnQueue(&readyQ, p->pcb.Pid, p->pcb.Priority, p->pcb.Name, p->pcb.Time);
+		p = p->next;//p移动到队列的下一个位置
+	}
+
+	//当阻塞态队列的PCB内的信息复制到就绪队列相应的节点上完成之后将阻塞态队列清空
+	Queueptr n, m;//n用来遍历队列的节点，m用于指向被删除的节点
+	Q->rear = Q->front;//队尾指针指向队头指针
+	n = Q->front->next;//n指向队头指针的下一个节点
+	Q->front->next = NULL;//队头指针的下一个节点指向NULL(表示删除之后的所有元素)
+
+	//当队列中还有元素，释放头结点之后的所有结点
+	while (n) {
+		m = n;//m结点指向被删除节点
+		n = n->next;//n指向队列的下一个节点
+		free(m);//释放m节点
+	}
+	if (Q->front == Q->rear)
+	{
+		printf("阻塞态队列清空完毕\n");
+	}
+}
+
+int main()
+{
+
+	int t = 0;//用于选择执行那一条过程
+	InitQueue(&newbuiltQ);
+	InitQueue(&runQ);
+	InitQueue(&readyQ);
+	InitQueue(&clogQ);
+
+	while (t != 6)
+	{
+		printf("================================\n");
+		printf("五状态进程的转换模拟\n");
+		printf("================================\n");
+		printf("1:创建新建态		2:模拟进程从就绪态到执行态再到阻塞态\n");
+		printf("3:模拟将阻塞态态转为就绪态再转变到执行态		4:退出程序\n");
+		printf("--------------------------------\n");
+		printf("请选择(1~3):\n");
+		scanf("%d", &t);
+		switch (t) {
+		case 1:	
+				number++;
+				EnQueueCreateThread(&newbuiltQ);
+			break;
+		case 2:
+				QueueTravel(&newbuiltQ);
+			break;
+		case 3:
+				QueueTravel1(&clogQ);
+			break;
+		case 4:
+				printf("模拟过程结束Bye!\n");
+				exit(0);
+			break;
+		}
+	}
+	return 0;
+}
